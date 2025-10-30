@@ -33,10 +33,17 @@ The controller focuses on automation and policy enforcement, delegating routing 
 
 ### Requirements
 
+** IMPORTANT **
+!!! Install Docker with root privileges !!!
+   ```bash
+   curl -fsSL https://get.docker.com -o get-docker.sh
+   sudo sh ./get-docker.sh
+   ```
+
 - Docker Engine ≥ 20.x  
 - Docker Compose v2  
-- Python ≥ 3.8  
-- Ryu Framework (installed within controller container)
+- Python ≥ 3.8  (default 3.9)
+- Ryu Framework (installed within controller container with RyuFlows custom app)
 
 ### Launching the Simulation
 **Docker Swarm Setup:**  
@@ -134,7 +141,7 @@ multi-node/
 │   ├── host.Dockerfile            # Host image
 │   └── ovs.Dockerfile             # OVS image
 │
-└── cleanup_docker.sh              # Docker cleanup
+└── cleanup_docker.sh              # Docker and network cleanup
 ```
 
 ---
@@ -176,19 +183,19 @@ Each switch (`s1`, `s2`, `s3`) loads the following OpenFlow rules:
 ## 🖥️ System Overview Diagram
 
 ```
-+--------------------+       +--------------------+
-|      Node A        |       |      Node B        |
-|  +-------------+   |       |  +-------------+   |
-|  |  Router 1   |<==VXLAN==>|  |  Router 2   |   |
-|  +------+------+   |       |  +------+------+   |
-|         |           |       |         |           |
-|   +-----+----+      |       |   +-----+----+      |
-|   | Switches |      |       |   | Switches |      |
-|   +-----+----+      |       |   +-----+----+      |
-|         |           |       |         |           |
-|     +---+---+       |       |     +---+---+       |
-|     | Hosts |       |       |     | Hosts |       |
-+--------------------+       +--------------------+
++--------------------+           +--------------------+
+|      Node A        |           |      Node B        |
+|  +-------------+   |           |  +-------------+   |
+|  |  Router 1   |   |<==VXLAN==>|  |  Router 2   |   |
+|  +------+------+   |           |  +------+------+   |
+|         |          |           |         |          |
+|   +-----+----+     |           |   +-----+----+     |
+|   | Switches |     |           |   | Switches |     |
+|   +-----+----+     |           |   +-----+----+     |
+|         |          |           |         |          |
+|     +---+---+      |           |     +---+---+      |
+|     | Hosts |      |           |     | Hosts |      |
++--------------------+           +--------------------+
 
          ↕
    Docker Swarm Overlay

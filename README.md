@@ -44,6 +44,7 @@ Before launching the topology, you must initialize the control network and Docke
 
 1. Start the control network and controller:
    ```bash
+   cd ryu_flows/
    sudo ./control-net.sh
    ```
 
@@ -60,17 +61,14 @@ This step is required to enable inter-node communication through the VXLAN overl
 
 #### Node A
 ```bash
+cd topology-veth/
 sudo ./topology.sh 1
 ```
 
 #### Node B
 ```bash
+cd topology-veth/
 sudo ./topology.sh 2
-```
-
-#### Controller Node
-```bash
-sudo ./control-net.sh
 ```
 
 When the startup completes:
@@ -225,6 +223,6 @@ sudo ./cleanup_docker.sh
 
 ## 📚 References
 
-* [Ryu SDN Framework](https://osrg.github.io/ryu/)
+* [Ryu SDN Framework](https://ryu-sdn.org/resources.html)
 * [Open vSwitch Documentation](https://www.openvswitch.org/)
 * [Docker Networking](https://docs.docker.com/network/)

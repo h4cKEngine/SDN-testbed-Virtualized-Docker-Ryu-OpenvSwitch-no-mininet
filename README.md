@@ -51,9 +51,9 @@ Before launching the topology, you must initialize the control network and Docke
 2. After the controller starts, copy the **Docker Swarm join token** displayed in the terminal.  
    This token will be required by all worker nodes (e.g., Node A, Node B) to join the Swarm network.
 
-3. On each worker node, join the Swarm using the token:
+3. On each worker node, join the Swarm copying the token into topology-veth/topology.sh in CONTROLLER_SWARM_JOIN_TOKEN:
    ```bash
-   docker swarm join --token <SWARM_JOIN_TOKEN> <controller-ip>:2377
+   CONTROLLER_SWARM_JOIN_TOKEN="<SWMTKN-1-TOKEN>"
    ```
 
 This step is required to enable inter-node communication through the VXLAN overlay network.

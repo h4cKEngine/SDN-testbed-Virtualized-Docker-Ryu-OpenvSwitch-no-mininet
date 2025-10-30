@@ -1,0 +1,24 @@
+services:
+  ryu:
+    build:
+      context: .
+      dockerfile: ryu.Dockerfile
+    container_name: ryu
+    hostname: ryu
+    privileged: true
+    restart: unless-stopped
+    healthcheck:
+      test: ["CMD-SHELL", "nc -z localhost 6653"]
+      retries: 10
+      start_period: 30s
+    ports:
+      - "6653:6653"
+      - "6633:6633"
+      - "8080:8080"
+    networks:
+      control-net:
+        ipv4_address: "10.0.100.128"
+
+networks:
+  control-net:
+    external: true

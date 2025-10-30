@@ -1,0 +1,46 @@
+/*
+  TOPOLOGY CSS
+  - Stili del contenitore, del titolo e della canvas SVG (#topology).
+  - Stile del pulsante "Refresh".
+  - NOTA: alcune regole compaiono duplicate nel file originale (mantenute per fedeltà).
+*/
+
+.container {
+  padding: 20px;
+  max-width: 900px;
+  margin: auto;
+}
+
+.container {
+  padding: 20px;
+  max-width: 900px;
+  margin: auto;
+}
+
+h2 {
+  color: #286f11;
+  margin-bottom: 20px;
+}
+
+#topology {
+  display: block;
+  margin: auto;
+  background-color: #f5fff5;
+  border: 1px solid #ccc;
+  border-radius: 6px;
+}
+
+#refreshbtn {
+  padding: 8px 16px;
+  font-size: 16px;
+  margin-bottom: 10px;
+  cursor: pointer;
+  background-color: #286f11;
+  color: white;
+  border: none;
+  border-radius: 4px;
+}
+
+#refreshbtn:hover {
+  background-color: #29b935;
+}

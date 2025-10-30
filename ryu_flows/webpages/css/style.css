@@ -1,0 +1,137 @@
+/*
+  STYLE CSS (generale)
+  - Regole di base per body e container.
+  - Stile tabelle (lista switch/host/link), form e pulsanti.
+  - Stile dell'area <pre id="output"> per i messaggi utente.
+*/
+
+body {
+  font-family: Arial, sans-serif;
+  margin: 0;
+  padding: 0;
+}
+
+/* 1) Contenitori centrati e con larghezza massima */
+.container {
+  max-width: 1100px;   /* scegli 960/1100/1200 a piacere */
+  margin: 0 auto;      /* centra orizzontalmente */
+  padding: 20px;
+  box-sizing: border-box;
+}
+
+/* 2) Riga hero: form a sinistra, logo a destra ma NON attaccato al bordo */
+.container.hero {
+  display: flex;
+  align-items: center;          /* centra verticalmente */
+  justify-content: space-between;
+  gap: 32px;
+}
+
+/* 3) Colonne */
+.form-wrap { 
+  flex: 1 1 520px;              /* il form prende lo spazio che serve */
+}
+
+.logo-wrap {
+  flex: 0 0 280px;              /* colonna fissa per il logo */
+  display: flex;
+  justify-content: center;      /* centra il logo nella sua colonna */
+  align-items: center;
+}
+
+.logo-wrap img {
+  max-width: 100%;
+  height: auto;
+}
+
+/* Responsivo */
+@media (max-width: 768px) {
+  .container.hero { flex-direction: column; }
+  .logo-wrap { flex-basis: auto; }
+}
+
+table {
+  width: 100%;
+  border-collapse: collapse;
+  margin-top: 20px;
+}
+
+th, td {
+  padding: 8px;
+  text-align: left;
+  border-bottom: 1px solid #ddd;
+}
+
+th {
+  background-color: #4CAF50;
+  color: white;
+}
+
+
+input {
+  margin-bottom: 10px;
+  display: block;
+  padding: 6px;
+  width: 250px;
+}
+
+button {
+  margin-right: 10px;
+  padding: 6px 12px;
+}
+
+pre {
+  background-color: #f4f4f4;
+  padding: 10px;
+  border: 1px solid #ccc;
+  margin-top: 20px;
+  max-width: 65%;
+}
+
+form {
+  background-color: #eef9f1;
+  padding: 20px;
+  border-radius: 8px;
+  max-width: 400px;
+  box-shadow: 0 2px 5px rgba(0,0,0,0.1);
+}
+
+form label {
+  display: block;
+  margin-bottom: 6px;
+  font-weight: bold;
+  color: #333;
+}
+
+form input {
+  width: 100%;
+  padding: 8px;
+  margin-bottom: 14px;
+  border: 1px solid #ccc;
+  border-radius: 4px;
+  box-sizing: border-box;
+}
+
+form button {
+  padding: 8px 16px;
+  background-color: #286f11;
+  color: white;
+  border: none;
+  border-radius: 4px;
+  margin-right: 8px;
+  cursor: pointer;
+}
+
+form button:hover {
+  background-color: #3a9225;
+}
+
+#output {
+  white-space: pre-wrap;
+  background-color: #fff;
+  padding: 12px;
+  margin-top: 20px;
+  border-left: 4px solid #286f11;
+  font-family: monospace;
+  color: #222;
+}

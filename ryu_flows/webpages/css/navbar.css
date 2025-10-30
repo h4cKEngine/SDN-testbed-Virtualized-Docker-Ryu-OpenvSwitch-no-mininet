@@ -1,0 +1,46 @@
+/*
+  NAVBAR CSS
+  - Stile della barra verde superiore con link (Home/Topology).
+  - Personalizzazione della scrollbar (WebKit + Firefox).
+*/
+
+nav {
+  background-color: #286f11;
+  overflow: hidden;
+  padding: 0;
+  margin: 0;
+}
+
+nav a {
+  float: left;
+  display: block;
+  color: #f0f0f0; /* slightly off-white for contrast */
+  text-align: center;
+  padding: 14px 20px;
+  text-decoration: none;
+  font-weight: bold;
+}
+
+nav a:hover {
+  background-color: #8fbc8f; /* a darker green on hover */
+}
+
+/* Per Chrome, Edge, Safari */
+::-webkit-scrollbar {
+  width: 12px; /* larghezza della scrollbar */
+}
+
+::-webkit-scrollbar-track {
+  background: #f1f1f1; /* colore traccia */
+}
+
+::-webkit-scrollbar-thumb {
+  background-color: #286f11; /* colore del thumb */
+  border-radius: 6px; /* angoli arrotondati */
+  border: 3px solid #f1f1f1; /* bordo per il padding */
+}
+
+/* Per Firefox */
+* {
+  scrollbar-color: #286f11 #f1f1f1; /* thumb e track */
+}

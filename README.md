@@ -146,7 +146,7 @@ multi-node/
 
 ---
 
-## ⚙️ Flow Table Design
+## Flow Table Design
 
 Each switch (`s1`, `s2`, `s3`) loads the following OpenFlow rules:
 
@@ -160,7 +160,7 @@ Each switch (`s1`, `s2`, `s3`) loads the following OpenFlow rules:
 
 ---
 
-## 🔧 Controller Features
+## Controller Features
 
 * Dynamic route installation via REST.  
 * Topology and flow export/import.  
@@ -170,7 +170,7 @@ Each switch (`s1`, `s2`, `s3`) loads the following OpenFlow rules:
 
 ---
 
-## 🧠 Technical Stack
+## Technical Stack
 
 * Docker Engine (≥ 20.x)
 * Docker Compose (CLI v2)
@@ -180,7 +180,7 @@ Each switch (`s1`, `s2`, `s3`) loads the following OpenFlow rules:
 
 ---
 
-## 🖥️ System Overview Diagram
+## System Overview Diagram
 
 ```
 +--------------------+           +--------------------+
@@ -205,7 +205,7 @@ Each switch (`s1`, `s2`, `s3`) loads the following OpenFlow rules:
 
 ---
 
-## 🧩 Example Workflow
+## Example Workflow
 
 1. Launch the controller using `control-net.sh`.
 2. Deploy topology nodes with `topology.sh`.
@@ -219,7 +219,7 @@ Each switch (`s1`, `s2`, `s3`) loads the following OpenFlow rules:
 
 ---
 
-## 📦 Cleanup
+## Cleanup
 
 To remove all containers and networks:
 ```bash
@@ -228,7 +228,7 @@ sudo ./cleanup_docker.sh
 
 ---
 
-## 📚 References
+## References
 
 * [Ryu SDN Framework](https://ryu-sdn.org/resources.html)
 * [Open vSwitch Documentation](https://www.openvswitch.org/)

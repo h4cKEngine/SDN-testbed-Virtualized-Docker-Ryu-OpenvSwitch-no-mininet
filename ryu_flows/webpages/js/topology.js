@@ -1,61 +1,61 @@
 /**
  * fetchTopology()
- * 1) Fetch parallelo: /links, /hosts, /hostmap, /cfg/routers, /switches.
- * 2) Indici porte:
+ * 1) Parallel fetch: /links, /hosts, /hostmap, /cfg/routers, /switches.
+ * 2) Port indices:
  *    - portIndexByName[nameLower] -> { dpid, port_no }
  *    - portIndexByKey["dpid:port"] -> nameLower
  * 3) Router:
- *    - routerDpids = DPID da /cfg/routers
- *    - + ogni switch che ha almeno una porta con name che inizia per "vxlan"
- * 4) Naming nodi:
- *    - Switch: label guessSwitchLabelFromPorts(ports) (es. porta "s3-to-s4" => "s3").
- *      if (dpid ∈ routerDpids) skip inferenza.
- *    - Router: nome stabile r1, r2, … usando window._routerNameMap (persistente tra refresh).
- * 5) Regole “infra” e host fantasma:
- *    - INFRA_RE: porta è “infra” se name combacia con: "*-to-*", "router*-link", "vxlan*", "vxlan_sys_*",
+ *    - routerDpids = DPID from /cfg/routers
+ *    - + any switch that has at least one port with name starting with "vxlan"
+ * 4) Node naming:
+ *    - Switch: label guessSwitchLabelFromPorts(ports) (e.g. port "s3-to-s4" => "s3").
+ *      if (dpid ∈ routerDpids) skip inference.
+ *    - Router: stable name r1, r2, … using window._routerNameMap (persistent across refreshes).
+ * 5) "Infra" rules and ghost hosts:
+ *    - INFRA_RE: port is "infra" if name matches: "*-to-*", "router*-link", "vxlan*", "vxlan_sys_*",
  *      "dp*", "patch-*", "local".
  *    - isInfraPort(dpid, port):
- *        if (dpid ∈ routerDpids) return true;              // tutte le porte dei router sono infra
- *        else return INFRA_RE.test(nomePorta) (solo se name esiste).
+ *        if (dpid ∈ routerDpids) return true;              // all router ports are infra
+ *        else return INFRA_RE.test(portName) (only if name exists).
  *    - isGhostHost(h):
- *        if (h.port.dpid ∈ routerDpids) return true;       // mai disegnare host sui router
- *        if (isInfraPort(...) && !haIP) return true;        // infra senza IP => fantasma
+ *        if (h.port.dpid ∈ routerDpids) return true;       // never draw hosts on routers
+ *        if (isInfraPort(...) && !hasIP) return true;       // infra without IP => ghost
  *        else return false.
- * 6) Merge host:
- *    - Parto da /hosts, filtro con isGhostHost(); tengo set seenIPs.
- *    - /hostmap: per ogni entry
- *         - se IP già in seenIPs => skip
- *         - se mancano dpid/port: risolvo via resolvePortForHost(hostname) usando portIndexByName
+ * 6) Host Join:
+ *    - Start from /hosts, filter with isGhostHost(); keep seenIPs set.
+ *    - /hostmap: for each entry
+ *         - if IP already in seenIPs => skip
+ *         - if dpid/port missing: resolve via resolvePortForHost(hostname) using portIndexByName
  *         - if (dpid ∈ routerDpids) => skip
- *         - if (isInfraPort(dpid, port) && IP assente) => skip
- *         - altrimenti aggiungo (mac="host:<hostname|ip>", ipv4=[ip?]).
- * 7) Link:
- *    - Aggiungo link fisici da /links (src.dpid:src.port_no → dst.dpid:dst.port_no).
- *    - Aggiungo link “solo UI” tra router consecutivi (ordinati) con:
+ *         - if (isInfraPort(dpid, port) && IP missing) => skip
+ *         - otherwise add (mac="host:<hostname|ip>", ipv4=[ip?]).
+ * 7) Links:
+ *    - Add physical links from /links (src.dpid:src.port_no -> dst.dpid:dst.port_no).
+ *    - Add "UI-only" links between consecutive routers (sorted) with:
  *        { kind:'router_vxlan', src_port:'VXLAN', dst_port:'VXLAN' }.
- * 8) Nodi:
- *    - host dai dati uniti; switch+router da dpid visti nei link/host.
- * 9) Espongo per le tabelle:
+ * 8) Nodes:
+ *    - hosts from joined data; switch+router from dpids seen in links/hosts.
+ * 9) Expose for tables:
  *    window._macToHostName, window._dpidToSwitchName, window._routerDpids.
- * 10) drawTopology(nodes, links, mappe).
+ * 10) drawTopology(nodes, links, maps).
  *
  * drawTopology()
  * - D3 forces + zoom/drag.
- * - Link (un solo layer) con stile condizionale:
+ * - Links (single layer) with conditional style:
  *     if (kind==='router_vxlan') stroke #6aa, width 3, dash "6,4", opacity 0.9, raise();
  *     else stroke #aaa, width 2.
- * - Icone: host.png / router.png / switch.png.
- * - Label: host -> _macToHostName[id]; switch/router -> _dpidToSwitchName[id].
+ * - Icons: host.png / router.png / switch.png.
+ * - Labels: host -> _macToHostName[id]; switch/router -> _dpidToSwitchName[id].
  *
  * fetchSwitches()
- * - Tabella “Switch Ports”: Name(label), Switch(DPID), Port No, MAC, NameLink (nome porta).
+ * - "Switch Ports" table: Name(label), Switch(DPID), Port No, MAC, NameLink (port name).
  *
  * fetchHosts()
- * - Tabella “Hosts” filtrata: salta le righe con host.port.dpid ∈ _routerDpids.
+ * - "Hosts" table filtered: skips rows with host.port.dpid ∈ _routerDpids.
  *
  * refreshTopology()
- * - Esegue fetchTopology(), poi fetchSwitches() e fetchHosts().
-*/
+ * - Executes fetchTopology(), then fetchSwitches() and fetchHosts().
+ */
 
 async function fetchTopology() {
   try {
@@ -68,14 +68,14 @@ async function fetchTopology() {
     ]);
 
     const linksData = await linksRes.json();
-    const hostsApi  = await hostsRes.json();      // può includere porte "infra"
-    const hostMap   = await hostMapRes.json();    // [{ip,port,hostname,dpid?}]
-    const routers   = await routersRes.json();    // [{dpid,...}] o []
-    const switches  = await switchesRes.json();   // [{dpid,ports:[...]}]
+    const hostsApi = await hostsRes.json();      // may include "infra" ports
+    const hostMap = await hostMapRes.json();    // [{ip,port,hostname,dpid?}]
+    const routers = await routersRes.json();    // [{dpid,...}] o []
+    const switches = await switchesRes.json();   // [{dpid,ports:[...]}]
 
-    // ---- Indici porte
+    // ---- Port Indices
     const portIndexByName = new Map();            // nameLower -> {dpid, port_no}
-    const portIndexByKey  = new Map();            // "dpid:port_no" -> nameLower
+    const portIndexByKey = new Map();            // "dpid:port_no" -> nameLower
     switches.forEach(sw => {
       const dpidStr = String(sw.dpid);
       (sw.ports || []).forEach(p => {
@@ -108,15 +108,15 @@ async function fetchTopology() {
     const ipToHostname = {};
     let switchCounter = 1;
 
-    // ---- Filtra host su porte "infra"
-    const INFRA_RE =/(^|[^a-z0-9])((\w+[-_]to[-_]\w+)|(router\d*[-_]link)|(vxlan\S*)|(vxlan_sys_\d+)|(\bdp\d+)|(\bpatch-\S+)|(\blocal\b))($|[^a-z0-9])/i;
+    // ---- Filter hosts on "infra" ports
+    const INFRA_RE = /(^|[^a-z0-9])((\w+[-_]to[-_]\w+)|(router\d*[-_]link)|(vxlan\S*)|(vxlan_sys_\d+)|(\bdp\d+)|(\bpatch-\S+)|(\blocal\b))($|[^a-z0-9])/i;
 
     function getPortName(dpid, port_no) {
       return (portIndexByKey.get(`${String(dpid)}:${port_no}`) || '').toLowerCase();
     }
 
-    // Porta “infra” solo se il nome la identifica chiaramente.
-    // Porte senza nome NON sono infra (molte host-side non hanno name).
+    // Port "infra" only if the name clearly identifies it.
+    // Port without name NON sono infra (molte host-side non hanno name).
     function isInfraPort(dpid, port_no) {
       if (routerDpids.has(String(dpid))) return true;
       const name = getPortName(dpid, port_no);
@@ -124,20 +124,20 @@ async function fetchTopology() {
       return INFRA_RE.test(name);
     }
 
-    // Considero “host fantasma” solo se collegato a porta infra E non ha IP valido.
+    // Consider "ghost host" only if connected to infra port AND no valid IP.
     function isGhostHost(h) {
       const dpid = h.port?.dpid, port_no = h.port?.port_no;
-      // qualsiasi porta di un router → host non valido per la tua UI
+      // any port of a router -> invalid host for your UI
       if (dpid != null && routerDpids.has(String(dpid))) return true;
 
       const hasIP = Boolean((h.ipv4 && h.ipv4[0]) || (h.ipv6 && h.ipv6[0]));
       return (dpid != null && port_no != null) && isInfraPort(dpid, port_no) && !hasIP;
     }
 
-    // ---- IP -> hostname (etichette host)
+    // ---- IP -> hostname (host labels)
     (hostMap || []).forEach(e => { if (e && e.ip) ipToHostname[e.ip] = e.hostname || e.ip; });
 
-    // ---- Ricava etichette switch dai nomi di porta
+    // ---- Infer switch labels from port names
     function guessSwitchLabelFromPorts(ports) {
       for (const p of (ports || [])) {
         const n = String(p.name || '').toLowerCase();
@@ -147,7 +147,7 @@ async function fetchTopology() {
         if (m) {
           const pref = m[1];
           const m2 = pref.match(/^ovs(\d+)$/); if (m2) return `s${m2[1]}`;
-          const m3 = pref.match(/^s(\d+)$/);   if (m3) return `s${m3[1]}`;
+          const m3 = pref.match(/^s(\d+)$/); if (m3) return `s${m3[1]}`;
           return pref;
         }
       }
@@ -167,12 +167,12 @@ async function fetchTopology() {
       if (!prevRouterNameMap[dpid]) {
         prevRouterNameMap[dpid] = `r${nextIdx++}`;
       }
-      // forza il nome del router (sovrascrive eventuale "sN")
+      // force router name (overwrites potential "sN")
       dpidToSwitchName[dpid] = prevRouterNameMap[dpid];
     });
     window._routerNameMap = prevRouterNameMap;
 
-    // ---- Link switch-switch
+    // ---- Switch-switch links
     linksData.forEach(link => {
       const src = String(link.src.dpid);
       const dst = String(link.dst.dpid);
@@ -181,12 +181,12 @@ async function fetchTopology() {
       links.push({ source: src, target: dst, src_port: link.src.port_no, dst_port: link.dst.port_no });
     });
 
-    // === UI-ONLY: aggiungi tratto grafico tra router (VXLAN overlay) ===
+    // === UI-ONLY: add graphical link between routers (VXLAN overlay) ===
     (function addRouterUiLinks() {
-      const routersArr = Array.from(routerDpids).map(String).sort(); // ordina per stabilità
+      const routersArr = Array.from(routerDpids).map(String).sort(); // sort for stability
       if (routersArr.length < 2) return;
 
-      // collega in "catena" r1—r2, r2—r3, ... (se vuoi solo r1—r2, fai un solo push)
+      // connect in "chain" r1—r2, r2—r3, ... (if you want only r1—r2, push once)
       for (let i = 1; i < routersArr.length; i++) {
         const a = routersArr[i - 1], b = routersArr[i];
         const exists = links.some(l => {
@@ -206,14 +206,14 @@ async function fetchTopology() {
       }
     })();
 
-    // ============== UNIONE HOST con filtro INFRA ==============
+    // ============== HOST UNION with INFRA filter ==============
     const hostsData = [];
     const seenIPs = new Set();
 
-    // a) /hosts (filtrato)
+    // a) /hosts (filtered)
     (hostsApi || []).forEach(h => {
       const ip = (h.ipv4 && h.ipv4[0]) || (h.ipv6 && h.ipv6[0]) || '';
-      if (isGhostHost(h)) return; // scarta fantasma
+      if (isGhostHost(h)) return; // discard ghost
       hostsData.push(h);
       if (ip) seenIPs.add(ip);
     });
@@ -233,7 +233,7 @@ async function fetchTopology() {
       }
       if (!dpid || !port_no) return;
 
-      if (routerDpids.has(String(dpid))) return;       // ⬅️ evita host su porte dei router
+      if (routerDpids.has(String(dpid))) return;       // <- avoid hosts on router ports
       if (isInfraPort(dpid, port_no) && !ip) return;
 
       hostsData.push({
@@ -244,7 +244,7 @@ async function fetchTopology() {
       if (ip) seenIPs.add(ip);
     });
 
-    // ---- nodi host + link
+    // ---- host nodes + links
     hostsData.forEach(host => {
       const hostId = host.mac;
       const ip = (host.ipv4 && host.ipv4[0]) || (host.ipv6 && host.ipv6[0]) || '';
@@ -257,14 +257,14 @@ async function fetchTopology() {
       }
     });
 
-    // ---- nodi switch/router
+    // ---- switch/router nodes
     const allDpids = new Set(Object.keys(dpidToSwitchName));
     hostsData.forEach(h => { if (h.port && h.port.dpid != null) allDpids.add(String(h.port.dpid)); });
     allDpids.forEach(dpid => {
       nodesMap[dpid] = { id: dpid, type: routerDpids.has(dpid) ? 'router' : 'switch' };
     });
 
-    // ---- esponi mappe + disegna
+    // ---- expose maps + draw
     window._macToHostName = macToHostName;
     window._dpidToSwitchName = dpidToSwitchName;
     window._routerDpids = routerDpids;
@@ -297,14 +297,14 @@ function drawTopology(nodes, links, macToHostName, dpidToSwitchName) {
 
   // Draw links
   const link = container.append("g")
-  .attr("stroke-linecap", "round")
-  .selectAll("line")
-  .data(links)
-  .join("line")
-  .attr("stroke", d => d.kind === 'router_vxlan' ? "#6aa" : "#aaa")
-  .attr("stroke-width", d => d.kind === 'router_vxlan' ? 3 : 2)
-  .attr("stroke-dasharray", d => d.kind === 'router_vxlan' ? "6,4" : null)
-  .attr("stroke-opacity", d => d.kind === 'router_vxlan' ? 0.9 : 1);
+    .attr("stroke-linecap", "round")
+    .selectAll("line")
+    .data(links)
+    .join("line")
+    .attr("stroke", d => d.kind === 'router_vxlan' ? "#6aa" : "#aaa")
+    .attr("stroke-width", d => d.kind === 'router_vxlan' ? 3 : 2)
+    .attr("stroke-dasharray", d => d.kind === 'router_vxlan' ? "6,4" : null)
+    .attr("stroke-opacity", d => d.kind === 'router_vxlan' ? 0.9 : 1);
 
   link.filter(d => d.kind === 'router_vxlan').raise();
 
@@ -340,7 +340,7 @@ function drawTopology(nodes, links, macToHostName, dpidToSwitchName) {
     .text(d => {
       if (d.type === 'host') {
         return macToHostName[d.id] || d.id;
-      } else if (d.type === 'switch' || d.type === 'router') { // <— aggiungi router qui
+      } else if (d.type === 'switch' || d.type === 'router') { // <- add router here
         return dpidToSwitchName[d.id] || d.id;
       }
     });
@@ -390,7 +390,7 @@ function drawTopology(nodes, links, macToHostName, dpidToSwitchName) {
 async function fetchSwitches() {
   try {
     const container = document.getElementById("switchTableContainer");
-    if (!container) return; // pagina senza la tabella Switches
+    if (!container) return; // page without Switches table
 
     const res = await fetch('/v1.0/topology/switches');
     const switches = await res.json();
@@ -423,7 +423,7 @@ async function fetchSwitches() {
 async function fetchHosts() {
   try {
     const container = document.getElementById("hostTableContainer");
-    if (!container) return; // pagina senza la tabella Hosts
+    if (!container) return; // page without Hosts table
 
     const res = await fetch('/v1.0/topology/hosts');
     const hosts = await res.json();
@@ -439,7 +439,7 @@ async function fetchHosts() {
     let html = "<table border='1'><tr><th>Host</th><th>Hostname</th><th>IPv4</th><th>Switch</th><th>Port</th></tr>";
     let rows = 0;
     hosts.forEach(host => {
-      if (host.port && routerDpids.has(String(host.port.dpid))) return; // salta host su router
+      if (host.port && routerDpids.has(String(host.port.dpid))) return; // skip hosts on routers
       rows++;
       const hostname = macToHostName[host.mac] || host.mac;
       html += `<tr>
@@ -457,12 +457,12 @@ async function fetchHosts() {
 }
 
 function refreshTopology() {
-  const hasSvg = !!document.getElementById("topology"); // la pagina ha il canvas?
+  const hasSvg = !!document.getElementById("topology"); // does page have canvas?
   const p = hasSvg ? fetchTopology() : Promise.resolve();
 
   p.then(() => {
     if (document.getElementById("switchTableContainer")) fetchSwitches();
-    if (document.getElementById("hostTableContainer"))   fetchHosts();
+    if (document.getElementById("hostTableContainer")) fetchHosts();
   });
 }
 

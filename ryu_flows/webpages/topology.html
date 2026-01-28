@@ -1,14 +1,15 @@
 <!--
   Ryu Flow Controller - Home
-  Logica generale:
-  - Mostra una navbar per navigare tra Home e Topology.
-  - Contiene un form (#connectForm) con due input: IP sorgente e IP destinazione.
-  - I bottoni "Connect" (submit) e "Disconnect" (onclick) chiamano funzioni in js/home.js.
-  - L'output testuale delle operazioni è mostrato nell'elemento <pre id="output">.
+General Logic:
+- Displays a navbar to navigate between Home and Topology.
+- Contains a form (#connectForm) with two inputs: source IP and destination IP.
+- The "Connect" (submit) and "Disconnect" (onclick) buttons call functions in js/home.js.
+- The text output of the operations is shown in the <pre id="output"> element.
 -->
 
 <!DOCTYPE html>
 <html>
+
 <head>
   <meta charset="UTF-8">
   <title>Network Topology</title>
@@ -17,30 +18,32 @@
   <link rel="stylesheet" href="css/topology.css">
   <script src="https://d3js.org/d3.v7.min.js"></script>
 </head>
+
 <body>
-   <nav>
-    <a href="./index.html">🏠 Home</a>
-    <a href="./topology.html">🌐 Topology</a>
+  <nav>
+    <a href="./index.html">Home</a>
+    <a href="./topology.html">Topology</a>
   </nav>
 
   <div class="container">
     <h2>SDN Topology Viewer</h2>
-    <button id="refreshbtn" onclick="refreshTopology()">🔄 Refresh Topology</button>
+    <button id="refreshbtn" onclick="refreshTopology()">Refresh Topology</button>
     <svg id="topology" width="800" height="600"></svg>
   </div>
 
   <div class="container tables">
     <section id="switchSection">
-      <h3>🔀 Switch Ports</h3>
+      <h3>Switch Ports</h3>
       <div id="switchTableContainer"></div>
     </section>
 
     <!-- <section id="hostSection">
-      <h3>💻 Hosts</h3>
+      <h3>Hosts</h3>
       <div id="hostTableContainer"></div>
     </section> -->
   </div>
 
   <script src="js/topology.js"></script>
 </body>
+
 </html>

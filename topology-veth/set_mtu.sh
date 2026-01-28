@@ -1,9 +1,10 @@
-#!/usr/bin/env bash
-# set_mtu.sh — Allinea l'MTU overlay su host, router e OVS, con filtro per topologie.
-# Uso:
+#!/bin/bash
+
+# set_mtu.sh — Align l'MTU overlay su host, router e OVS, con filtro per topologie.
+# Usage:
 #   sudo ./set_mtu.sh apply
 #   sudo NAME_REGEX='^(ovs1|ovs2|h1|h2|router[12])$' ./set_mtu.sh apply   # solo topo-1
-# Opzioni: MTU_OVERLAY=1450  BOUNCE=1 (down/up dopo il set)
+# Options: MTU_OVERLAY=1450  BOUNCE=1 (down/up after the set)
 
 set -euo pipefail
 

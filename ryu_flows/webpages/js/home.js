@@ -1,20 +1,20 @@
 /**
- * Contenuti e logica:
+ * Contents and logic:
  * 1) Connection Manager
- *    - Attende il DOM pronto e aggancia l’handler di submit al form #connectForm.
- *    - Espone window.disconnect() per il bottone "Disconnect".
- *    - Valida src/dst e chiama le REST:
- *        • POST   /pair    {src,dst}  → aggiunge una coppia consentita
- *        • DELETE /pair    {src,dst}  → rimuove la coppia
- *    - Stampa l’esito con timestamp nel <pre id="output">.
+ *    - Waits for DOM ready and attaches submit handler to #connectForm.
+ *    - Exposes window.disconnect() for the "Disconnect" button.
+ *    - Validates src/dst and calls REST:
+ *        - POST   /pair    {src,dst}  -> adds an allowed pair
+ *        - DELETE /pair    {src,dst}  -> removes the pair
+ *    - Prints the result with timestamp in the <pre id="output">.
  *
  * 2) Pairs View
- *    - Mostra le coppie/“regole” correnti da:
- *        • GET /pairs  → { pairs:[ {src,dst, flows:[{dpid,match}]}, ... ] }
- *    - UI con pulsante “Refresh” e Auto-refresh ogni 5s.
- *    - Requisiti DOM: #refreshPairs, #autorefresh, #pairsContainer.
+ *    - Shows current pairs/"rules" from:
+ *        - GET /pairs  -> { pairs:[ {src,dst, flows:[{dpid,match}]}, ... ] }
+ *    - UI with "Refresh" button and Auto-refresh every 5s.
+ *    - DOM requirements: #refreshPairs, #autorefresh, #pairsContainer.
  *
- * Nota: questo file è unico per la Home; non servono altri JS.
+ * Note: this file is unique for Home; no other JS is needed.
 */
 
 document.addEventListener("DOMContentLoaded", () => {
@@ -38,7 +38,7 @@ document.addEventListener("DOMContentLoaded", () => {
     const dst = document.getElementById("dst").value.trim();
 
     if (!src || !dst) {
-      output.textContent = `[${getCurrentTime()}] ❌ Both source and destination are required.`;
+      output.textContent = `[${getCurrentTime()}] Both source and destination are required.`;
       output.style.color = "red";
       return;
     }
@@ -57,14 +57,14 @@ document.addEventListener("DOMContentLoaded", () => {
       const text = await res.text();
       const time = getCurrentTime();
       if (res.ok) {
-        output.textContent = `[${time}] ✅ ${method === "POST" ? "Connection" : "Disconnection"} successful: ${text}`;
+        output.textContent = `[${time}] ${method === "POST" ? "Connection" : "Disconnection"} successful: ${text}`;
         output.style.color = "green";
       } else {
-        output.textContent = `[${time}] ❌ ${method === "POST" ? "Connection" : "Disconnection"} failed: ${text}`;
+        output.textContent = `[${time}] ${method === "POST" ? "Connection" : "Disconnection"} failed: ${text}`;
         output.style.color = "red";
       }
     } catch (err) {
-      output.textContent = `[${getCurrentTime()}] ❌ Error: ${err.message}`;
+      output.textContent = `[${getCurrentTime()}] Error: ${err.message}`;
       output.style.color = "red";
     }
   }
@@ -72,8 +72,8 @@ document.addEventListener("DOMContentLoaded", () => {
 
 /**
  * pairsView.js
- * - Mostra le allowed pairs da GET /pairs e, se presenti, i flow installati.
- * - Bottone Refresh + Auto-refresh (5s).
+ * - Shows allowed pairs from GET /pairs and, if present, installed flows.
+ * - Refresh button + Auto-refresh (5s).
  */
 document.addEventListener("DOMContentLoaded", () => {
   const btn = document.getElementById("refreshPairs");
@@ -99,14 +99,14 @@ document.addEventListener("DOMContentLoaded", () => {
       const data = await res.json();
       renderPairs(data);
     } catch (err) {
-      container.innerHTML = `<p style="color:red">Errore nel caricamento: ${escapeHtml(err.message)}</p>`;
+      container.innerHTML = `<p style="color:red">Error loading: ${escapeHtml(err.message)}</p>`;
     }
   }
 
   function renderPairs(data) {
     const pairs = (data && Array.isArray(data.pairs)) ? data.pairs : [];
     if (pairs.length === 0) {
-      container.innerHTML = "<p>Nessuna regola configurata.</p>";
+      container.innerHTML = "<p>No rules configured.</p>";
       return;
     }
 
@@ -136,7 +136,7 @@ document.addEventListener("DOMContentLoaded", () => {
           <td>${escapeHtml(p.src)}</td>
           <td>${escapeHtml(p.dst)}</td>
         </tr>`;
-        // <td>${flowsHtml}</td>
+      // <td>${flowsHtml}</td>
     });
 
     html += "</tbody></table>";
@@ -149,6 +149,6 @@ document.addEventListener("DOMContentLoaded", () => {
     }[s]));
   }
 
-  // carica una prima volta
+  // load first time
   refresh();
 });

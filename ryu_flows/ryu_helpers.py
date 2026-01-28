@@ -1,35 +1,35 @@
 """
-Modulo di supporto (`ryu_helpers.py`) per l’applicazione Ryu `RyuFlows`.
+Helper module (`ryu_helpers.py`) for the Ryu application `RyuFlows`.
 
-Contiene classi helper strettamente associate a `RyuFlows` ma non derivate da essa,
-organizzate per ambito funzionale:
+Contains helper classes tightly coupled to `RyuFlows` but not inherited from it,
+organized by functional scope:
 
-  - **HelperBase**: classe base comune per gli helper; fornisce accesso facilitato
-    a logger e configurazione REST dell’app principale.
-  - **HelperREST**: funzioni di supporto per interazione REST con `ryu.app.rest_router`
-    (operazioni GET/POST JSON, creazione idempotente di interfacce e rotte L3).
-  - **HelperDatapath**: metodi per ottenere informazioni sui datapath (descrizione porte,
-    MAC bridge locale, rilevamento porte chiave dei router).
-  - **HelperFlow**: installazione di flussi OpenFlow preconfigurati per gestione ARP,
-    traffico sul link di transito VXLAN e override specifici per il traffico inter-LAN.
-  - **HelperPolicy**: funzioni di verifica e filtraggio IP↔IP per applicazione delle policy ACL.
+  - **HelperBase**: Common base class for helpers; provides easy access
+    to the main app's logger and REST configuration.
+  - **HelperREST**: Support functions for REST interaction with `ryu.app.rest_router`
+    (GET/POST JSON operations, idempotent creation of interfaces and L3 routes).
+  - **HelperDatapath**: Methods to obtain datapath information (port descriptions,
+    local bridge MAC, detection of key router ports).
+  - **HelperFlow**: Installation of preconfigured OpenFlow rules for ARP management,
+    traffic on the VXLAN transit link, and specific overrides for inter-LAN traffic.
+  - **HelperPolicy**: IP↔IP verification and filtering functions for ACL policy enforcement.
 
-Caratteristiche:
+Features:
 ----------------
-- Gli helper operano in modo idempotente, evitando di duplicare configurazioni già presenti.
-- Le operazioni REST sono ritentate più volte con attese progressive in caso di errore.
-- Le installazioni di flussi utilizzano cookie distintivi per consentire la rimozione selettiva.
-- Il rilevamento porte router supporta convenzioni di naming (es. `router1-link`, `vxlan0`)
-  e parametri LAN definiti nell’app `RyuFlows`.
+- Helpers operate idempotently, avoiding duplication of existing configurations.
+- REST operations are retried multiple times with progressive backoff in case of error.
+- Flow installations use distinctive cookies to allow selective removal.
+- Router port detection supports naming conventions (e.g., `router1-link`, `vxlan0`)
+  and LAN parameters defined in the `RyuFlows` app.
 
-Utilizzo:
+Usage:
 ---------
-Gli oggetti helper vengono istanziati all’interno di `RyuFlows` e richiamati nei vari
-event handler per:
-    - interrogare lo stato della rete via REST,
-    - rilevare la topologia e le porte chiave,
-    - configurare interfacce e rotte su `rest_router`,
-    - applicare flussi di instradamento e policy personalizzate.
+Helper objects are instantiated within `RyuFlows` and called in various
+event handlers to:
+    - query network status via REST,
+    - discover topology and key ports,
+    - configure interfaces and routes on `rest_router`,
+    - apply routing flows and custom policies.
 """
 
 
@@ -40,7 +40,7 @@ from ipaddress import ip_address
 
 
 class HelperBase:
-    """Base comune per helper: accoppiata stretta a RyuFlows, senza ereditarla."""
+    """Common base for helpers: tightly coupled to RyuFlows, without inheriting."""
     def __init__(self, app):
         self.app = app  # istanza di RyuFlows
 
@@ -128,7 +128,7 @@ class HelperREST(HelperBase):
 
         have_pairs, have_addrs = collect_addrs_with_port(current)
         if (address, port_no) in have_pairs or address in have_addrs:
-            self.logger.info("Interfaccia già presente su dpid=%s (addr=%s, port=%s)", dpid, address, port_no)
+            self.logger.info("Interface already present on dpid=%s (addr=%s, port=%s)", dpid, address, port_no)
             return True
 
         payload = {"address": address, "port": int(port_no)}
@@ -158,7 +158,7 @@ class HelperREST(HelperBase):
 
         have = _collect_routes(current)
         if (destination, gateway) in have:
-            self.logger.info("Route già presente su dpid=%s: %s via %s", dpid, destination, gateway)
+            self.logger.info("Route already present on dpid=%s: %s via %s", dpid, destination, gateway)
             return True
 
         payload = {"destination": destination, "gateway": gateway}
@@ -281,8 +281,8 @@ class HelperFlow(HelperBase):
 
     def _install_interlan_overrides(self):
         """
-        Per ciascun router: se il pacchetto è destinato alla *propria* LAN,
-        consegnalo alla porta LAN (per far uscire lato LAN i frame decapsulati VXLAN).
+        For each router: if packet is destined to *own* LAN,
+        deliver to LAN port (output decapsulated VXLAN frames to LAN side).
         """
         for dpid in sorted(self.app.router_dpids):
             ports = self.app.router_ports.get(dpid)
@@ -302,7 +302,7 @@ class HelperFlow(HelperBase):
                               actions=[p.OFPActionOutput(int(ports['lan_no']))],
                               cookie=self.app.COOKIE_BASE)
 
-        self.logger.info("Override inter-LAN: ip→LAN installati (prio 40) su tutti i router.")
+        self.logger.info("Inter-LAN override: ip->LAN installed (prio 40) on all routers.")
 
 
 class HelperPolicy(HelperBase):

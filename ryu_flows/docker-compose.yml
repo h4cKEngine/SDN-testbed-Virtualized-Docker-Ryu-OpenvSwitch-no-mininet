@@ -1,4 +1,6 @@
 services:
+  # Ryu Controller Service
+  # Runs the Ryu manager with custom application and exposes OpenFlow/REST ports
   ryu:
     build:
       context: .
@@ -19,6 +21,7 @@ services:
       control-net:
         ipv4_address: "10.0.100.128"
 
+# Network definition for the Control Plane
 networks:
   control-net:
     external: true

@@ -1,8 +1,8 @@
 /*
   TOPOLOGY CSS
-  - Stili del contenitore, del titolo e della canvas SVG (#topology).
-  - Stile del pulsante "Refresh".
-  - NOTA: alcune regole compaiono duplicate nel file originale (mantenute per fedeltà).
+  - Container, title, and SVG canvas styles (#topology).
+  - "Refresh" button style.
+  - NOTE: some rules appear duplicated in the original file (kept for fidelity).
 */
 
 .container {

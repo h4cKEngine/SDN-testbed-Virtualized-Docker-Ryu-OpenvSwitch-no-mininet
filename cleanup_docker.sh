@@ -1,70 +1,70 @@
 #!/bin/bash
 
 # ==============================================================================
-# Script di CLEANUP TOTALE per ambiente SDN containerizzato
+# TOTAL CLEANUP script for containerized SDN environment
 # ==============================================================================
-# Scopo
-#   Rimuovere in modo aggressivo TUTTI i componenti dell’ambiente di test
-#   (container, reti, immagini, volumi, risorse OVS e interfacce residue), così
-#   da riportare l’host ad uno stato “pulito” prima di un nuovo deploy.
+# Scope
+#   Aggressively remove ALL test environment components
+#   (containers, networks, images, volumes, OVS resources and residual interfaces),
+#   bringing the host back to a "clean" state before a new deploy.
 #
-# ATTENZIONE (operazioni DISTRUTTIVE)
-#   - Elimina container, reti custom, volumi orfani e (opz.) TUTTE le immagini.
-#   - Esegue `docker system prune -a -f` e `docker builder prune -a -f`.
-#   - Cancella veth/gre residue a livello host e nei netns dei container.
-#   - Interviene su OVS: ferma demoni, elimina bridge/interfacce, ripulisce DB.
-#   - Riavvia i servizi openvswitch-switch e docker.
-#   PROSEGUIRE SOLO SE si intende davvero resettare l’intero ambiente.
+# ATTENTION (DESTRUCTIVE operations)
+#   - Delete containers, custom networks, orphan volumes and (opt.) ALL images.
+#   - Executes `docker system prune -a -f` and `docker builder prune -a -f`.
+#   - Deletes residual veth/gre at host level and in container netns.
+#   - Intervenes on OVS: stops daemons, deletes bridges/interfaces, cleans DB.
+#   - Restarts openvswitch-switch and docker services.
+#   PROCEED ONLY IF you really intend to reset the entire environment.
 #
-# Uso
+# Usage
 #   sudo ./<script>.sh
-#   (non accetta parametri)
+#   (no parameters accepted)
 #
-# Prerequisiti
-#   - Privilegi root.
+# Prerequisites
+#   - Root privileges.
 #   - Docker + Docker Compose, Open vSwitch, iproute2, nsenter, awk/sed/grep.
-#   - Nomi delle interfacce di base correttamente esclusi dai filtri:
+#   - Basic interface names correctly excluded from filters:
 #       lo | enp3s0 | wlo1 | virbr0 | docker0
-#     (adattare l’elenco alla macchina ospitante, se necessario).
+#     (adapt list to host machine if necessary).
 #
-# Cosa fa, in ordine:
-#   1) Esce dallo Swarm (worker): `docker swarm leave --force`.
-#   2) Rimuove controller Ryu e overlay di controllo `control-net`.
-#   3) Arresta e rimuove TUTTI i container (non solo h*/ovs*).
-#   4) Rimuove eventuali reti dati “bridge” generate per host-switch/switch-switch.
-#   5) Esegue `docker compose down -v --remove-orphans`, prune di container/volumi.
-#   6) Ripulisce reti custom orfane (`docker network prune` + delete mirate).
-#   7) Prune avanzato di sistema e builder.
-#   8) (Opzionale ma attivo) Rimuove tutte le immagini Docker locali.
-#   9) Porta l’interfaccia fisica principale in promisc (enp3s0), se serve.
-#  10) Cancella interfacce residue a livello host (veth/bridge/ovs) eccetto quelle
-#      essenziali; prova a rimuovere gre0/gretap0/erspan0 (template non rimovibili).
-#  11) Rimuove bridge OVS residui (ovs-system, br-*), killer dei demoni OVS,
-#      cleanup di vxlan-br/br-vxlan/vxlan0 e di veth-router*.
-#  12) Pulisce le interfacce veth residue all’interno dei container (via nsenter).
-#  13) Esegue un restart “pulito” di Open vSwitch:
-#       - stop demoni, kill processi, delete vxlan*, purge run/log/conf.db.*,
-#         start servizio openvswitch-switch.
-#  14) Riavvia Docker e stampa lo stato finale (container/reti/volumi/usage Disco),
-#      oltre all’assetto IP dell’host.
+# What it does, in order:
+#   1) Leaves Swarm (worker): `docker swarm leave --force`.
+#   2) Removes Ryu controller and `control-net` control overlay.
+#   3) Stops and removes ALL containers (not just h*/ovs*).
+#   4) Removes any "bridge" data networks generated for host-switch/switch-switch.
+#   5) Executes `docker compose down -v --remove-orphans`, container/volume prune.
+#   6) Cleans orphan custom networks (`docker network prune` + targeted delete).
+#   7) Advanced system and builder prune.
+#   8) (Optional but active) Removes all local Docker images.
+#   9) Sets main physical interface to promisc (enp3s0), if needed.
+#  10) Deletes residual host-level interfaces (veth/bridge/ovs) except essential ones;
+#      tries to remove gre0/gretap0/erspan0 (non-removable templates).
+#  11) Removes residual OVS bridges (ovs-system, br-*), kills OVS daemons,
+#      cleanup of vxlan-br/br-vxlan/vxlan0 and veth-router*.
+#  12) Cleans residual veth interfaces inside containers (via nsenter).
+#  13) Performs a "clean" restart of Open vSwitch:
+#       - stop daemons, kill processes, delete vxlan*, purge run/log/conf.db.*,
+#         start openvswitch-switch service.
+#  14) Restarts Docker and prints final state (containers/networks/volumes/Disk usage),
+#      plus host IP setup.
 #
-# Note operative
-#   - Idempotenza: ogni step è “best effort” (|| true) per tollerare stati parziali.
-#   - Sicurezza: rivedere i filtri delle interfacce escluse prima dell’uso; non
-#     rimuovere link fisici/gestionali dell’host.
-#   - Conservazione immagini: per conservare le immagini locali, commentare
-#     `remove_all_images` e/o `advanced_cleanup`.
-#   - Ambiente OVS: il blocco di restart rimuove socket/lock/log/DB residui che
-#     possono impedire ripartenze pulite dopo test intensivi.
+# Operational Notes
+#   - Idempotence: each step is "best effort" (|| true) to tolerate partial states.
+#   - Safety: review excluded interface filters before use; do not
+#     remove host physical/management links.
+#   - Image conservation: to keep local images, comment out
+#     `remove_all_images` and/o `advanced_cleanup`.
+#   - OVS Environment: the restart block removes residual sockets/locks/logs/DBs that
+#     can prevent clean restarts after intensive tests.
 #
-# Output atteso
-#   - Nessun container attivo, nessuna rete custom residua, OVS in stato “fresh”.
-#   - Stato stampato a fine esecuzione: `docker ps -a`, `docker network ls`,
+# Expected Output
+#   - No active containers, no residual custom networks, OVS in "fresh" state.
+#   - State printed at end of execution: `docker ps -a`, `docker network ls`,
 #     `docker volume ls`, `docker system df`, `ip -4 a`.
 #
-# Responsabilità
-#   Questo script è pensato per ambienti di laboratorio. Evitarne l’uso su host
-#   di produzione o con risorse Docker condivise.
+# Responsibility
+#   This script is designed for lab environments. Avoid using it on
+#   production hosts or with shared Docker resources.
 # ==============================================================================
 
 
@@ -72,51 +72,51 @@
 # Funzioni di cleanup Docker
 # ====================================================
 stop_and_remove_containers() {
-  echo "[1/8] Arresto e rimozione container di host e switches…"
+  echo "[1/8] Stopping and removing host and switch containers..."
   #docker ps -a --filter "name=^h[0-9]+" --format "{{.ID}}" | xargs -r docker rm -f
   docker ps -a | xargs -r docker rm -f # Comprende anche altri nomi
 }
 
 remove_controller_and_controlnet() {
-  echo "[2/8] Rimozione container Ryu e rete di controllo..."
+  echo "[2/8] Removing Ryu container and control network..."
   docker rm -f ryu || true
   docker network rm control-net || true
 }
 
 remove_data_networks() {
-  echo -e "\n[3/8] Rimozione reti dati topology (host-switch e switch-switch)..."
+  echo -e "\n[3/8] Removing datapath topology networks (host-switch and switch-switch)..."
   docker network ls --filter "driver=bridge" --format "{{.Name}}" \
     | grep -E '^(h[0-9]+s[0-9]+-net|s[0-9]+s[0-9]+-net)$' \
     | xargs -r docker network rm || true
 }
 
 remove_orphan_resources() {
-  echo -e "\n[4/8] Rimozione container e volumi orfani..."
+  echo -e "\n[4/8] Removing orphan containers and volumes..."
   docker compose down -v --remove-orphans || true
   docker container prune -f || true
   docker volume prune -f || true
 }
 
 remove_custom_networks() {
-  echo -e "\n[5/8] Rimozione reti orfane e custom (eccetto bridge, host, none)..."
+  echo -e "\n[5/8] Removing orphan and custom networks (except bridge, host, none)..."
   docker network prune -f
   docker network ls --filter "type=custom" -q | xargs -r docker network rm || true
 }
 
 advanced_cleanup() {
-  echo -e "\n[6/8] Pulizia avanzata di sistema Docker..."
+  echo -e "\n[6/8] Advanced Docker system prune..."
   docker system prune -a -f || true
   docker builder prune -a -f || true
 }
 
 remove_all_images() {
-  echo -e "\n[7/8] Rimozione di tutte le immagini Docker..."
+  echo -e "\n[7/8] Removing all Docker images..."
   docker image prune -a -f
   docker images -q | xargs -r docker rmi -f || true
 }
 
 delete_veth_and_gre_interfaces() {
-  echo -e "\n[8/8] Rimozione interfacce residue tranne quelle di base…"
+  echo -e "\n[8/8] Removing residual interfaces except basic ones..."
 
   # 1) elimina tutte le interfacce non essenziali (veth, bridge docker, ovs, ecc.)
   ip -o link show \
@@ -125,14 +125,14 @@ delete_veth_and_gre_interfaces() {
     | grep -Ev '^(lo|enp3s0|wlo1|virbr0|docker0)$' \
     | sort -u \
     | while read -r iface; do
-        echo "  Eliminazione di $iface…"
+        echo "  Deleting $iface..."
         ip link delete "$iface" 2>/dev/null || true
       done
 
   # 2) rimuovi le GRE di sistema se ancora presenti
   for gre_if in gre0 gretap0 erspan0; do
     if ip link show "$gre_if" &>/dev/null; then
-      echo "  Eliminazione interfaccia GRE $gre_if…"
+      echo "  Deleting GRE interface $gre_if..."
       ip link delete "$gre_if" 2>/dev/null || true
     fi
   done
@@ -141,15 +141,15 @@ delete_veth_and_gre_interfaces() {
   pkill ovs-vswitchd 2>/dev/null || true
   modprobe -r ip_gre 2>/dev/null || true
   
-  echo "  [INFO] Le interfacce gre0, gretap0, erspan0 sono kernel template e NON sono removibili manualmente."
-  echo "[OK] Interfacce di rete e GRE pulite."
+  echo "  [INFO] Interfaces gre0, gretap0, erspan0 are kernel templates and CANNOT be removed manually."
+  echo "[OK] Network and GRE interfaces cleaned."
 }
 
 # ====================================================
 # 9) Rimuove i bridge OVS residui (ovs-system e br-*)
 # ====================================================
 delete_remaining_ovs_bridges() {
-  echo -e "\n[9/9] Rimozione restanti bridge OVS (ovs-system e br-*)…"
+  echo -e "\n[9/9] Removing remaining OVS bridges (ovs-system and br-*)..."
   systemctl restart openvswitch-switch
 
   # 1) Assicuriamoci che i demoni OVS non stiano ricreando le interfacce
@@ -157,7 +157,7 @@ delete_remaining_ovs_bridges() {
 
   # 2) Elimino direttamente ovs-system (se esiste)
   if ip link show ovs-system &>/dev/null; then
-    echo "  Eliminazione interfaccia ovs-system…"
+    echo "  Deleting ovs-system interface..."
     ip link delete ovs-system 2>/dev/null || true
   fi
 
@@ -166,8 +166,8 @@ delete_remaining_ovs_bridges() {
                | awk -F': ' '{print $2}' \
                | sed 's/@.*//' \
                | grep -E '^br-'); do
-    echo "  Eliminazione bridge $br…"
-    # prova prima con ovs-vsctl (se il database è ancora vivo)
+    echo "  Deleting bridge $br..."
+    # try first with ovs-vsctl (if database is still alive)
     ovs-vsctl --if-exists del-br "$br" 2>/dev/null || true
     # poi, in ogni caso, cancello l'interfaccia a livello Linux
     ip link delete "$br" 2>/dev/null || true
@@ -179,7 +179,7 @@ delete_remaining_ovs_bridges() {
   ip link del veth-router1 2>/dev/null || true
   ip link del veth-router2 2>/dev/null || true
 
-  echo "[OK] Tutti i bridge OVS residui sono stati rimossi."
+  echo "[OK] All residual OVS bridges removed."
 }
 
 restart_ovs() {
@@ -193,7 +193,7 @@ restart_ovs() {
   sudo ip link del vxlan1 2>/dev/null || true
   sudo ip link del vxlan2 2>/dev/null || true
 
-  # ATTENZIONE: elimina i socket e lock residui!
+  # WARNING: removes residual sockets and locks!
   rm -rf /var/run/openvswitch/*
   rm -rf /var/log/openvswitch/*
   rm -rf /etc/openvswitch/conf.db.*
@@ -202,11 +202,11 @@ restart_ovs() {
 }
 
 cleanup_veth_in_container() {
-  echo -e "\n[10/10] Pulizia interfacce veth residue nei container…"
+  echo -e "\n[10/10] Cleaning residual veth interfaces in containers..."
 
   docker ps -q | while read -r cid; do
     cname=$(docker inspect -f '{{.Name}}' "$cid" | cut -c2-)
-    echo "  🔍 Container: $cname"
+    echo "  [INFO] Container: $cname"
 
     PID=$(docker inspect -f '{{.State.Pid}}' "$cid" 2>/dev/null)
     if [[ "$PID" =~ ^[0-9]+$ ]] && [[ "$PID" -gt 0 ]]; then
@@ -215,14 +215,14 @@ cleanup_veth_in_container() {
         | sed 's/@.*//' \
         | grep -Ev '^(lo|eth0|eth1|ovsbr|vxlan0|ovs-system)$' \
         | while read -r iface; do
-            echo "    🧹 Elimino $iface…"
+            echo "    [DEL] Deleting $iface..."
             nsenter -t "$PID" -n ip link delete "$iface" 2>/dev/null || true
         done
     else
-      echo "    ⚠️ PID non valido ($PID) per container $cname"
+      echo "    [WARN] Invalid PID ($PID) for container $cname"
     fi
   done
-  echo "[OK] Cleanup interfacce container completato."
+  echo "[OK] Container interface cleanup completed."
 }
 
 
@@ -230,7 +230,7 @@ cleanup_veth_in_container() {
 # Main
 # ====================================================
 main() {
-  echo "Esco dalla rete overlay docker swarm (da worker)"
+  echo "Leaving docker swarm overlay (as worker)"
   docker swarm leave --force
 
   remove_controller_and_controlnet
@@ -247,16 +247,16 @@ main() {
   restart_ovs
   systemctl restart docker
 
-  echo -e "\nStato finale dei container:"
+  echo -e "\nFinal container state:"
   docker ps --all
 
-  echo -e "\nStato finale delle reti:"a
+  echo -e "\nFinal network state:"
   docker network ls
 
-  echo -e "\nStato finale dei volumi:"
+  echo -e "\nFinal volume state:"
   docker volume ls
 
-  echo -e "\nUtilizzo disco Docker:"
+  echo -e "\nDocker disk usage:"
   docker system df
 
   ip -4 a

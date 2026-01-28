@@ -12,6 +12,8 @@ Routers and switches run inside Docker containers, interconnected via VXLAN tunn
 
 ---
 
+> [Leggi questo documento in Italiano](LEGGIMI.md) 🇮🇹
+
 ## 2. Operating Logic
 
 The system builds a **distributed SDN infrastructure** using **Open vSwitch** and a **custom Ryu controller**.

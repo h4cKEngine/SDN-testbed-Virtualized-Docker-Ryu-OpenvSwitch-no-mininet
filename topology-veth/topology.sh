@@ -1,41 +1,41 @@
 #!/bin/bash
 
 ################################################################################
-# SCOPO
-#   Automatizzare la creazione di una topologia di rete SDN containerizzata
-#   composta da host Docker, switch Open vSwitch e un router connesso al
-#   controller Ryu. Supporta due scenari topologici predefiniti.
+# SCOPE
+#   Automate the creation of a containerized SDN network topology
+#   composed of Docker hosts, Open vSwitch switches and a router connected to the
+#   Ryu controller. Supports two predefined topological scenarios.
 #
-# FUNZIONAMENTO (logica principale)
-#   1. Verifica che il nodo sia unito a Docker Swarm e, se necessario,
-#      esegue il join tramite token.
-#   2. Builda le immagini Docker "sdn-host" e "sdn-ovs".
-#   3. In base al parametro (1 o 2) seleziona la topologia:
-#        • TOPOLOGY 1 → ovs1..ovs4 con host h1..h8 su rete 10.0.1.0/24
-#        • TOPOLOGY 2 → ovs5..ovs8 con host h9..h16 su rete 10.0.2.0/24
-#   4. Avvia i container OVS, ciascuno con il proprio bridge (brX).
-#      - ovs1 e ovs5 hanno anche il ruolo di “gateway virtuale” (VIP .254).
-#   5. Collega in catena gli switch tra loro usando coppie veth.
-#   6. Avvia i container host, assegnando IP e default gateway.
-#   7. Collega ogni host al rispettivo switch tramite veth e configura eth0.
-#   8. Verifica la corretta presenza dell’interfaccia eth0 in ciascun host.
-#   9. Avvia il router VXLAN corrispondente (router1 per topologia 1,
-#      router2 per topologia 2) per abilitare il collegamento L3 con l’altra LAN.
+# OPERATION (main logic)
+#   1. Checks that the node is joined to Docker Swarm and, if necessary,
+#      performs the join via token.
+#   2. Builds the "sdn-host" and "sdn-ovs" Docker images.
+#   3. Based on the parameter (1 or 2) selects the topology:
+#        * TOPOLOGY 1 -> ovs1..ovs4 with hosts h1..h8 on network 10.0.1.0/24
+#        * TOPOLOGY 2 -> ovs5..ovs8 with hosts h9..h16 on network 10.0.2.0/24
+#   4. Starts the OVS containers, each with its own bridge (brX).
+#      - ovs1 and ovs5 also have the role of "virtual gateway" (VIP .254).
+#   5. Connects the switches in a chain using veth pairs.
+#   6. Starts the host containers, assigning IPs and default gateways.
+#   7. Connects each host to its respective switch via veth and configures eth0.
+#   8. Verifies the correct presence of the eth0 interface in each host.
+#   9. Starts the corresponding VXLAN router (router1 for topology 1,
+#      router2 for topology 2) to enable L3 connection with the other LAN.
 #
-# USO
-#   sudo ./topology.sh 1   # Crea la prima topologia (LAN 10.0.1.0/24)
-#   sudo ./topology.sh 2   # Crea la seconda topologia (LAN 10.0.2.0/24)
+# USAGE
+#   sudo ./topology.sh 1   # Creates the first topology (LAN 10.0.1.0/24)
+#   sudo ./topology.sh 2   # Creates the second topology (LAN 10.0.2.0/24)
 #
-# RISULTATO
-#   Viene creata una topologia SDN dinamica con:
-#     - Host Docker come endpoint di rete
-#     - Switch OVS interconnessi e gestiti da Ryu (OpenFlow13)
-#     - Router con tunnel VXLAN per collegare le due sottoreti
+# RESULT
+#   A dynamic SDN topology is created with:
+#     - Docker Hosts as network endpoints
+#     - Interconnected OVS Switches managed by Ryu (OpenFlow13)
+#     - Router with VXLAN tunnel to connect the two subnets
 ################################################################################
 
 
 #############################
-# Configurazione generale
+# General configuration
 #############################
 CONTROLLER_IP="192.168.1.128"
 CONTROLLER_SWARM_JOIN_TOKEN="SWMTKN-1-0uszccblp3b7npyn419x0zr7a23pz28354ljh4sd3ekz7qwcka-buyyqtcpz49rhyiigbmr228jg"
@@ -45,26 +45,26 @@ NUM_SWITCHES=4
 NUM_HOSTS=8
 
 ########################################
-# 0. Connessione alla rete control-net
+# 0. Connection to control-net
 ########################################
 ensure_swarm_join() {
   local state
   state="$(docker info --format '{{.Swarm.LocalNodeState}}' 2>/dev/null || echo inactive)"
 
   if [[ "$state" == "active" ]]; then
-    echo "✓ Già membro dello Swarm (stato: $state)."
+    echo "[OK] Already Swarm member (state: $state)."
     return
   fi
 
-  echo "➜ Unisco questo nodo allo Swarm del manager $CONTROLLER_IP"
+  echo "[INFO] Joining this node to Swarm of manager $CONTROLLER_IP"
   docker swarm join \
     --token "$CONTROLLER_SWARM_JOIN_TOKEN" \
     "$CONTROLLER_IP":2377
-  echo "✓ Nodo unito come worker."
+  echo "[OK] Node joined as worker."
 }
 
 ##################################
-# 1. Build delle immagini
+# 1. Build images
 ##################################
 build_images() {
   HOST_IMAGE="sdn-host:latest"
@@ -73,30 +73,30 @@ build_images() {
   echo "=== Building Docker images ==="
   docker build -t $HOST_IMAGE -f host.Dockerfile .
   docker build -t $OVS_IMAGE  -f ovs.Dockerfile  .
-  echo "=== Build completato ==="
+  echo "=== Build completed ==="
 }
 
 #############################################
-# 2. Avvia un container OVS/switch
+# 2. Start an OVS/switch container
 #############################################
 create_ovs_container() {
   local ovs_name="$1"
   local bridge_name="$2"
 
-  # Estrai l’ID (es. ovs1 → 1)
+  # Extract ID (e.g. ovs1 -> 1)
   local ovs_id="${ovs_name##ovs}"
   local ctrl_ip="10.0.100.$((100 + ovs_id))"
   local data_ip="10.0.1.$((100 + ovs_id))"
 
-  echo "[INFO] Avvio container OVS: $ovs_name → control-net/$ctrl_ip"
+  echo "[INFO] Starting OVS container: $ovs_name -> control-net/$ctrl_ip"
 
-  # Env comuni (access L2: niente controller)
+  # Common Envs (L2 access: no controller)
   local envs=(
     -e BR_NAME="$bridge_name"
     -e CONNECT_CONTROLLER=0
   )
 
-  # Env solo per ovs1/ovs5
+  # Env only for ovs1/ovs5
   case "$ovs_name" in
     ovs1)
       envs+=( -e VIP=10.0.1.254 -e ROUTER_LINK=router1-link )
@@ -120,14 +120,14 @@ create_ovs_container() {
 }
 
 #############################################
-# 3. Avvia un container Host
+# 3. Start a Host container
 #############################################
 create_host_container() {
   local host_name="$1"
   local host_ip="$2"
   local default_gw="$3"
 
-  echo "[INFO] Avvio container Host: $host_name (IP=$host_ip)..."
+  echo "[INFO] Starting Host container: $host_name (IP=$host_ip)..."
   docker run -d \
     --name "$host_name" \
     --privileged \
@@ -139,7 +139,7 @@ create_host_container() {
 }
 
 ###############################################################
-# 4. Collega un host a un switch (bridge dentro OVS)
+# 4. Connect a host to a switch (bridge inside OVS)
 ###############################################################
 connect_host_to_switch() {
   local host_name="$1"
@@ -151,47 +151,47 @@ connect_host_to_switch() {
   local host_if="${host_name}_eth0"
   local peer_if="peer_${host_name}"
 
-  echo "[INFO] Collegamento: $host_name → $ovs_name:$bridge_name (IP=${ip_addr}, GW=${default_gw})"
+  echo "[INFO] Connecting: $host_name -> $ovs_name:$bridge_name (IP=${ip_addr}, GW=${default_gw})"
 
-  # (1) Elimino eventuali veth residue
+  # (1) Delete residual veths
   ip link del "$host_if" 2>/dev/null || true
   ip link del "$peer_if" 2>/dev/null || true
   sleep 0.2
 
-  # (2) Creo la veth pair sul nodo fisico (host → OVS)
+  # (2) Create veth pair on physical node (host -> OVS)
   ip link add "$host_if" type veth peer name "$peer_if" || {
-    echo "[ERROR] impossibile creare veth $host_if ↔ $peer_if"
+    echo "[ERROR] cannot create veth $host_if ↔ $peer_if"
     return 1
   }
 
-  # (3) Sposto peer_if nel namespace del container OVS
+  # (3) Move peer_if into OVS container namespace
   pid_ovs=$(docker inspect -f '{{.State.Pid}}' "$ovs_name")
   ip link set "$peer_if" netns "$pid_ovs"
   sleep 0.2
 
-  # (4) Dentro il container OVS: porto “peer_if” up e lo attacco al bridge
+  # (4) Inside OVS container: bring "peer_if" up and attach to bridge
   docker exec "$ovs_name" ip link set "$peer_if" up
   docker exec "$ovs_name" ovs-vsctl --may-exist add-port "$bridge_name" "$peer_if"
 
-  # (5) Sposto host_if nel namespace del container host e lo configurо
+  # (5) Move host_if into host container namespace and configure it
   pid_host=$(docker inspect -f '{{.State.Pid}}' "$host_name")
   ip link set "$host_if" netns "$pid_host"
   sleep 0.2
 
-  # Dentro l’host → rinomino in eth0, metto up e assegno IP
+  # Inside host -> rename to eth0, bring up and assign IP
   docker exec "$host_name" ip link set "$host_if" name eth0 up
   docker exec "$host_name" ip addr add "$ip_addr" dev eth0
   docker exec "$host_name" ip route replace default via "$default_gw" dev eth0
 
-  echo "[OK] $host_name collegato a $ovs_name:$bridge_name"
+  echo "[OK] $host_name connected to $ovs_name:$bridge_name"
 }
 
 ########################################################################
-# 5. collega gli switch in serie tramite veth a catena in modo dinamico
+# 5. Connect switches in series via chained veth dynamically
 ########################################################################
 connect_ovs_chain() {
   local idxs=( "$@" )
-  echo "[INFO] Collegamento a catena dinamico tra switch: ${idxs[*]}"
+  echo "[INFO] Dynamic daisy-chain connection between switches: ${idxs[*]}"
   for (( i=0; i<${#idxs[@]}-1; i++ )); do
     local a=${idxs[i]}
     local b=${idxs[i+1]}
@@ -202,7 +202,7 @@ connect_ovs_chain() {
     local veth_a="veth_s${a}s${b}"
     local veth_b="veth_s${b}s${a}"
 
-    echo "[INFO]   Collegamento ${br_a} ↔ ${br_b}"
+    echo "[INFO]   Connecting ${br_a} <-> ${br_b}"
     pid_a=$(docker inspect -f '{{.State.Pid}}' "${ovs_a}")
     pid_b=$(docker inspect -f '{{.State.Pid}}' "${ovs_b}")
 
@@ -216,9 +216,9 @@ connect_ovs_chain() {
     docker exec "${ovs_b}" ip link set "${veth_b}" name "s${b}-to-s${a}" up
     docker exec "${ovs_b}" ovs-vsctl --may-exist add-port "${br_b}" "s${b}-to-s${a}"
 
-    echo "    ↳ OK ${br_a}↔${br_b}"
+    echo "    -> OK ${br_a}<->${br_b}"
   done
-  echo "[OK] Switch chaining completato."
+  echo "[OK] Switch chaining completed."
 }
 
 
@@ -228,29 +228,29 @@ connect_ovs_chain() {
 #########################
 main() {
   ###############################
-  # 0 Controllo esistenza paramentro TOPOLOGY_NO
+  # 0 Check TOPOLOGY_NO parameter existence
   ###############################
   if [[ $# -ne 1 || "$1" != 1 && "$1" != 2 ]]; then
     echo "[USAGE] sudo ./topology.sh <TOPOLOGY_NO>"
-    echo "        TOPOLOGY_NO = 1 → prima topologia"
-    echo "        TOPOLOGY_NO = 2 → seconda topologia"
+    echo "        TOPOLOGY_NO = 1 -> first topology"
+    echo "        TOPOLOGY_NO = 2 -> second topology"
     exit 1
   fi
 
   TOPOLOGY_NO="$1"
   ###############################
-  # 6.0 Unisci questo nodo allo Swarm
+  # 6.0 Join this node to the Swarm
   ###############################
   ensure_swarm_join
   sleep 2
   
   ###############################
-  # 6.1 Build delle immagini
+  # 6.1 Build images
   ###############################
   build_images
 
   ###############################
-  # 6.2 Definisci la TOPOLOGY
+  # 6.2 Define TOPOLOGY
   ###############################
   if [[ "$TOPOLOGY_NO" == 1 ]]; then
     declare -a TOPOLOGY=(
@@ -277,7 +277,7 @@ main() {
   fi
 
   ###############################
-  # 6.3 Raccogli la lista univoca di switch
+  # 6.3 Collect unique list of switches
   ###############################
   declare -A SWITCHES=()
   for entry in "${TOPOLOGY[@]}"; do
@@ -285,17 +285,17 @@ main() {
     SWITCHES["$2"]=1
   done
 
-  # Estrai e ordina gli indici numerici
+  # Extract and sort numeric indices
   declare -a INDICES=()
   for ovs in "${!SWITCHES[@]}"; do
     INDICES+=( "${ovs#ovs}" )
   done
   IFS=$'\n' INDICES=( $(sort -n <<<"${INDICES[*]}") ); unset IFS
 
-  echo "[DEBUG] INDICES per chaining: ${INDICES[*]}"
+  echo "[DEBUG] INDICES for chaining: ${INDICES[*]}"
 
   ###############################
-  # 6.4 Avvia i container OVS
+  # 6.4 Start OVS containers
   ###############################
   for idx in "${INDICES[@]}"; do
     ovs_name="ovs${idx}"
@@ -305,13 +305,13 @@ main() {
   sleep 2
 
   ###############################
-  # 6.5 Chaining dinamico degli switch
+  # 6.5 Dynamic switch chaining
   ###############################
   connect_ovs_chain "${INDICES[@]}"
   sleep 1
 
   ###############################
-  # 6.6 Crea i container host
+  # 6.6 Create host containers
   ###############################
   declare -a HOSTS=()
   for entry in "${TOPOLOGY[@]}"; do
@@ -323,7 +323,7 @@ main() {
   sleep 2
 
   ###############################
-  # 6.7 Collega tutti gli host ai rispettivi switch
+  # 6.7 Connect all hosts to their respective switches
   ###############################
   for entry in "${TOPOLOGY[@]}"; do
     set -- $entry
@@ -334,26 +334,26 @@ main() {
   ###############################
   # 6.8 Verifica che eth0 sia presente negli host
   ###############################
-  echo "[INFO] Verifica interfacce eth0 sui container host…"
+  echo "[INFO] Checking eth0 interfaces on host containers..."
   for host in "${HOSTS[@]}"; do
     for i in {1..50}; do
       if docker exec "$host" ip link show dev eth0 &>/dev/null; then
-        echo "  → $host: eth0 OK"
+        echo "  -> $host: eth0 OK"
         break
       fi
       sleep 0.2
     done
   done
 
-  echo "[INFO] Topologia creata: ${#HOSTS[@]} host su ${#INDICES[@]} switch collegati a Ryu($CONTROLLER_NETWORK:$CONTROLLER_PORT)."
+  echo "[INFO] Topology created: ${#HOSTS[@]} hosts on ${#INDICES[@]} switches connected to Ryu($CONTROLLER_NETWORK:$CONTROLLER_PORT)."
 
-  # 6.8.1 Sincronizza con Ryu (hostmap + allowed pairs)
+  # 6.8.1 Sync with Ryu (hostmap + allowed pairs)
   ./register_hosts.sh $TOPOLOGY_NO
 
   ###############################
-  # 6.9 Avvia router e OVS
+  # 6.9 Start router and OVS
   ###############################
-  echo "[INFO] Avvio il router..."
+  echo "[INFO] Starting router..."
   if [[ "$TOPOLOGY_NO" == 1 ]]; then
     ./router/router_vxlan.sh router1
     echo "[LOGS] router1"

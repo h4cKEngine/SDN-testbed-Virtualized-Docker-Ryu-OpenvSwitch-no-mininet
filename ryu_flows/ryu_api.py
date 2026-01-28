@@ -1,46 +1,45 @@
 """
-Modulo di interfaccia REST e web per l’applicazione Ryu `RyuFlows`.
+REST and web interface module for the Ryu `RyuFlows` application.
 
-Contiene controller WSGI (`ControllerBase`) che espongono API per:
-  - gestione dinamica di coppie IP consentite (ACL),
-  - registrazione e consultazione mappatura host,
-  - consultazione configurazioni router,
-  - erogazione di contenuti web statici di supporto.
+Contains WSGI controllers (`ControllerBase`) that expose APIs for:
+  - dynamic management of allowed IP pairs (ACL),
+  - host registration and lookup,
+  - router configuration lookup,
+  - serving static support web content.
 
-Componenti principali:
+Main components:
 -----------------------
 - **RyuApi**
-    - Gestione coppie consentite:
-        * POST `/pair` → aggiunge una coppia IP↔IP consentita (idempotente).
-        * DELETE `/pair` → rimuove una coppia IP↔IP (idempotente).
-        * GET `/pairs` → restituisce elenco delle coppie consentite e, se disponibile,
-          le corrispondenti regole OpenFlow installate.
-    - Gestione host:
-        * POST `/register_host` → registra un host con IP, porta e hostname.
-        * GET `/hostmap` → restituisce la mappatura host registrati.
+    - Allowed pairs management:
+        * POST `/pair` -> adds an allowed IP<->IP pair (idempotent).
+        * DELETE `/pair` -> removes an IP<->IP pair (idempotent).
+        * GET `/pairs` -> returns list of allowed pairs and, if available,
+          the corresponding installed OpenFlow rules.
+    - Host management:
+        * POST `/register_host` -> registers a host with IP, port, and hostname.
+        * GET `/hostmap` -> returns the registered host mapping.
 - **RyuWebInterface**
-    - Erogazione file statici (HTML, CSS, JS, immagini) tramite rotta `/ryuflows/{filename}`.
+    - Serving static files (HTML, CSS, JS, images) via the `/ryuflows/{filename}` route.
 - **RouterApi**
-    - Configurazione router:
-        * POST `/cfg/router/{dpid}` → imposta configurazione per un router identificato da DPID.
-        * GET `/cfg/router/{dpid}` → restituisce configurazione del router specificato.
-        * GET `/cfg/routers` → elenca configurazioni di tutti i router gestiti.
+    - Router configuration:
+        * POST `/cfg/router/{dpid}` -> sets configuration for a router identified by DPID.
+        * GET `/cfg/router/{dpid}` -> returns configuration of the specified router.
+        * GET `/cfg/routers` -> lists configurations of all managed routers.
 
-Caratteristiche:
+Features:
 ----------------
-- Gli endpoint REST operano in modalità idempotente quando possibile.
-- La gestione delle coppie IP utilizza l’attributo `allowed_pairs` dell’istanza `RyuFlows`.
-- La riprogrammazione delle regole ACL è effettuata invocando `update_allowed_pairs()` o,
-  in assenza, `program_policy_rules()` del controller.
-- La registrazione host e la configurazione router vengono memorizzate nello stato interno
-  di `RyuFlows`.
-- I file statici sono serviti dalla sottodirectory `webpages/` relativa al modulo.
+- REST endpoints operate idempotently where possible.
+- IP pair management uses the `allowed_pairs` attribute of the `RyuFlows` instance.
+- ACL rule reprogramming is done by invoking `update_allowed_pairs()` or,
+  if missing, `program_policy_rules()` of the controller.
+- Host registration and router configuration are stored in the internal state
+  of `RyuFlows`.
+- Static files are served from the `webpages/` subdirectory relative to the module.
 
-Utilizzo:
+Usage:
 ---------
-Questi controller vengono registrati dal contesto WSGI dell’app `RyuFlows` se presente,
-permettendo la gestione runtime delle policy e la consultazione della configurazione
-tramite comandi HTTP.
+These controllers are registered by the `RyuFlows` app's WSGI context if present,
+enabling runtime policy management and configuration lookup via HTTP commands.
 """
 
 
@@ -48,24 +47,24 @@ from ryu.app.wsgi import ControllerBase, route
 from webob import Response
 import os, json
 
-# Chiave per accedere all'istanza del controller Ryu dal contesto web WSGI
+# Key to access the Ryu controller instance from the WSGI web context
 ALLOWED_PAIR_KEY = 'allowed_pair_api'
-# Stringa per accedere alla directory relativa all'intefaccia web
+# String to access the directory relative to the web interface
 STATIC_DIR = os.path.join(os.path.dirname(__file__), 'webpages')
 
 class RyuApi(ControllerBase):
     def __init__(self, req, link, data, **config):
         super(RyuApi, self).__init__(req, link, data, **config)
-        self.controller = data[ALLOWED_PAIR_KEY] # Collegamento al controller RyuFlows
+        self.controller = data[ALLOWED_PAIR_KEY] # Link to RyuFlows controller
 
-    # API per aggiungere una coppia IP consentita alla comunicazione
+    # API to add an allowed IP pair to communication
     @route('add_pair', '/pair', methods=['POST'])
     def add_allowed_pair(self, req, **kwargs):
         """
         POST /pair
         Body: {"src":"10.0.X.X","dst":"10.0.Y.Y"}
-        - Idempotente: se la coppia esiste già, risponde 200.
-        - Aggiorna le regole chiamando update_allowed_pairs() (o, fallback, program_policy_rules()).
+        - Idempotent: if pair already exists, returns 200.
+        - Updates rules by calling update_allowed_pairs() (or fallback program_policy_rules()).
         """
         try:
             data = req.json if req.body else {}
@@ -76,19 +75,19 @@ class RyuApi(ControllerBase):
 
             pair = (src_ip, dst_ip)
 
-            # Costruiamo nuovo set (idempotente)
+            # Build new set (idempotent)
             new_set = set(getattr(self.controller, 'allowed_pairs', set()))
             if pair in new_set:
-                # Già presente: nessuna riprogrammazione necessaria
+                # Already present: no reprogramming needed
                 return Response(status=200, body='Pair already exists\n')
 
             new_set.add(pair)
 
-            # Preferisci l'API del controller che normalizza e riprogramma
+            # Prefer controller API that normalizes and reprograms
             if hasattr(self.controller, 'update_allowed_pairs'):
                 self.controller.update_allowed_pairs(new_set)
             else:
-                # Fallback: aggiorna e riprogramma
+                # Fallback: update and reprogram
                 self.controller.allowed_pairs = new_set
                 if hasattr(self.controller, 'program_policy_rules'):
                     self.controller.program_policy_rules()
@@ -99,14 +98,14 @@ class RyuApi(ControllerBase):
         except Exception as e:
             return Response(status=500, body=str(e))
 
-    # Rotta per rimuovere una coppia via DELETE
+    # Route to remove a pair via DELETE
     @route('ryu_routes', '/pair', methods=['DELETE'])
     def remove_allowed_pair(self, req, **kwargs):
         """
         DELETE /pair
         Body: {"src":"10.0.X.X","dst":"10.0.Y.Y"}
-        - Idempotente: se la coppia non esiste risponde 404.
-        - Aggiorna le regole chiamando update_allowed_pairs() (o, fallback, program_policy_rules()).
+        - Idempotent: if pair does not exist, returns 404.
+        - Updates rules by calling update_allowed_pairs() (or fallback program_policy_rules()).
         """
         try:
             data = req.json if req.body else {}
@@ -122,11 +121,11 @@ class RyuApi(ControllerBase):
 
             current.discard(pair)
 
-            # Preferisci l'API del controller che normalizza e riprogramma
+            # Prefer controller API that normalizes and reprograms
             if hasattr(self.controller, 'update_allowed_pairs'):
                 self.controller.update_allowed_pairs(current)
             else:
-                # Fallback: aggiorna e riprogramma
+                # Fallback: update and reprogram
                 self.controller.allowed_pairs = current
                 if hasattr(self.controller, 'program_policy_rules'):
                     self.controller.program_policy_rules()
@@ -156,7 +155,7 @@ class RyuApi(ControllerBase):
         except Exception as e:
             return Response(status=500, body=str(e))
 
-    # API per ottenere la mappatura dinamica degli host (IP, porta) → nome host
+    # API to get dynamic host mapping (IP, port) -> hostname
     @route('hostmap', '/hostmap', methods=['GET'])
     def list_host_mapping(self, req, **kwargs):
         entries = []
@@ -182,13 +181,13 @@ class RyuApi(ControllerBase):
     def list_allowed_pairs(self, req, **kwargs):
         """
         GET /pairs
-        → Ritorna l'elenco delle coppie consentite.
-          Se il controller espone 'pair_to_flows', aggiunge anche i match installati.
+        -> Returns the list of allowed pairs.
+          If controller exposes 'pair_to_flows', matches installed are also added.
         """
         controller = self.controller  # type: ignore
 
         pairs_out = []
-        flow_map = getattr(controller, 'pair_to_flows', None)  # può non esistere
+        flow_map = getattr(controller, 'pair_to_flows', None)  # may not exist
         for src, dst in sorted(getattr(controller, 'allowed_pairs', set())):
             entry = {'src': src, 'dst': dst}
             if isinstance(flow_map, dict):
@@ -210,7 +209,7 @@ class RyuApi(ControllerBase):
         )
 
 class RyuWebInterface(ControllerBase):
-    # Metodo privato che restituisce un file con il giusto contenuto
+    # Private method to return a file with the correct content
     def _serve_file(self, path, content_type):
         full_path = os.path.join(STATIC_DIR, path.lstrip('/'))
         if not os.path.isfile(full_path):
@@ -218,7 +217,7 @@ class RyuWebInterface(ControllerBase):
         with open(full_path, 'rb') as f:
             return Response(content_type=content_type, body=f.read())
 
-    # Rotta per servire file HTML tramite il path /ryuflows/{filename}
+    # Route to serve HTML files via the /ryuflows/{filename} path
     @route('ryu_routes', '/ryuflows/{filename:.*}', methods=['GET'])
     def serve_file(self, req, filename, **kwargs):
         ext = os.path.splitext(filename)[1].lower()
@@ -235,14 +234,14 @@ class RyuWebInterface(ControllerBase):
 class RouterApi(ControllerBase):
     def __init__(self, req, link, data, **config):
         super(RouterApi, self).__init__(req, link, data, **config)
-        # qui imposti self.controller proprio come in RyuApi
+        # set self.controller just like in RyuApi
         self.controller = data[ALLOWED_PAIR_KEY]
 
     @route('cfg_router', '/cfg/router/{dpid}', methods=['POST'])
     def set_router(self, req, **kwargs):
         dpid = kwargs['dpid']
         body = req.json or {}
-        # salva in controller.router_cfg
+        # save in controller.router_cfg
         self.controller.router_cfg.setdefault(dpid, {}).update(body)
         return Response(status=200, body='OK\n')
 
@@ -259,13 +258,13 @@ class RouterApi(ControllerBase):
 
     @route('cfg_routers', '/cfg/routers', methods=['GET'])
     def list_routers(self, req, **kwargs):
-        # controller.router_cfg è un dict { dpid_str: {…config…}, … }
+        # controller.router_cfg is a dict { dpid_str: {…config…}, … }
         entries = [
             {'dpid': dpid, 'config': cfg}
             for dpid, cfg in self.controller.router_cfg.items()
         ]
         body = json.dumps(entries, indent=2)
-        # opzione A: specifico il charset
+        # option A: specify charset
         return Response(
             content_type='application/json',
             charset='utf-8',

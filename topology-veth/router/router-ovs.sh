@@ -1,39 +1,39 @@
 #!/bin/bash
 
 ################################################################################
-# SCOPO
-#   Inizializzare l’ambiente Open vSwitch all’interno del container router,
-#   creare un bridge OVS connesso a una porta VXLAN e alle interfacce locali,
-#   installare regole OpenFlow minime e collegarsi al controller Ryu.
+# SCOPE
+#   Initialize the Open vSwitch environment inside the router container,
+#   create an OVS bridge connected to a VXLAN port and local interfaces,
+#   install minimal OpenFlow rules, and connect to the Ryu controller.
 #
-# FUNZIONAMENTO
-#   • Riceve parametri tramite variabili d’ambiente (ROUTER, UNDERLAY_IP,
-#     VTEP_IPS, REMOTE_*_IP, interfacce, ecc.).
-#   • Disabilita l’IP forwarding nel kernel (il routing viene delegato a Ryu).
-#   • Avvia i demoni OVS (ovsdb-server, ovs-vswitchd).
-#   • Attende la disponibilità dell’interfaccia dati (es. dp0).
-#   • Crea il bridge OVS (default: vxlan-br) e aggiunge:
-#       – Porta VXLAN (vxlan0) con indirizzo overlay e peer remoto.
-#       – Interfaccia LAN (routerX-link) e interfaccia dati (dp0).
-#   • Attende che le porte abbiano ofport validi.
-#   • Configura il controller remoto Ryu (tcp:10.0.100.128:6653),
-#     protocollo OpenFlow13, fail-mode=secure.
-#   • Installa regole OpenFlow minime:
-#       1. ARP destinati al VIP del router → inviati al controller.
-#       2. IP destinati al VIP del router → inviati al controller.
-#       3. ARP generici → FLOOD.
-#       4. Table-miss → controller.
-#   • Mantiene il container vivo in background.
+# OPERATION
+#   - Receives parameters via environment variables (ROUTER, UNDERLAY_IP,
+#     VTEP_IPS, REMOTE_*_IP, interfaces, etc.).
+#   - Disables IP forwarding in the kernel (routing is delegated to Ryu).
+#   - Starts OVS daemons (ovsdb-server, ovs-vswitchd).
+#   - Waits for the data interface (e.g., dp0) to be available.
+#   - Creates the OVS bridge (default: vxlan-br) and adds:
+#       - VXLAN Port (vxlan0) with overlay address and remote peer.
+#       - LAN Interface (routerX-link) and data interface (dp0).
+#   - Waits for ports to have valid ofports.
+#   - Configures the remote Ryu controller (tcp:10.0.100.128:6653),
+#     OpenFlow13 protocol, fail-mode=secure.
+#   - Installs minimal OpenFlow rules:
+#       1. ARP destined for the router VIP -> sent to controller.
+#       2. IP destined for the router VIP -> sent to controller.
+#       3. Generic ARP -> FLOOD.
+#       4. Table-miss -> controller.
+#   - Keeps the container alive in background.
 #
-# RUOLO
-#   Ogni router containerizzato usa questo script per:
-#     – gestire la terminazione del tunnel VXLAN
-#     – collegare la LAN locale al dominio overlay
-#     – demandare al controller SDN la gestione di ARP/IP verso il gateway
+# ROLE
+#   Each containerized router uses this script to:
+#     - Manage VXLAN tunnel termination
+#     - Connect the local LAN to the overlay domain
+#     - Delegate ARP/IP management towards the gateway to the SDN controller
 #
-# RISULTATO
-#   Il container router diventa un nodo OVS configurato,
-#   pronto a inoltrare traffico tramite VXLAN e controllato da Ryu.
+# RESULT
+#   The router container becomes a configured OVS node,
+#   ready to forward traffic via VXLAN and controlled by Ryu.
 ################################################################################
 
 
@@ -70,7 +70,7 @@ start_ovs_daemons() {
   echo '[Start OVS daemons]'
   mkdir -p /var/run/openvswitch /etc/openvswitch
 
-  # CREA il DB SOLO se non esiste
+  # CREATE DB ONLY if it does not exist
   if [ ! -f /etc/openvswitch/conf.db ]; then
     ovsdb-tool create /etc/openvswitch/conf.db /usr/share/openvswitch/vswitch.ovsschema
   fi
@@ -110,7 +110,7 @@ setup_ovs_bridge() {
       options:key="$VXLAN_ID" \
       options:dst_port="$VXLAN_PORT"
 
-  # 3) Aggiungi esplicitamente le porte L2 del router al bridge
+  # 3) Explicitly add router L2 ports to the bridge
   for IFACE in "$ROUTER_LAN_IF" "$DATA_IFACE"; do
     if ip link show "$IFACE" &>/dev/null; then
       ip link set "$IFACE" up || true
@@ -118,7 +118,7 @@ setup_ovs_bridge() {
     fi
   done
 
-  # 4) Attesa ofport pronto (vxlan0)
+  # 4) Wait for ofport ready (vxlan0)
   local VX_OFPORT
   VX_OFPORT="$(ovs-vsctl get Interface "$VXPORT" ofport | tr -d '" ')"
   for i in {1..40}; do
@@ -128,42 +128,42 @@ setup_ovs_bridge() {
   done
   echo "[OK] $VXPORT ofport=$VX_OFPORT"
 
-  echo "[OVS] Bridge $BR pronto; vxlan=$VXPORT"
+  echo "[OVS] Bridge $BR ready; vxlan=$VXPORT"
 }
 
 insert_openflow_rules() {
   echo "[Insert OpenFlow rules on $OVS_BR]"
 
-  # Pulisci tutto
+  # Clean everything
   ovs-ofctl -O OpenFlow13 del-flows "$OVS_BR"
 
-  # (facoltativo) risolvi gli ofport, utile per log ma NON servono per i flow qui sotto
+  # (optional) resolve ofports, useful for logs but NOT needed for flows below
   VXLAN_IF="vxlan0"
   VXLAN_OFPORT=$(ovs-vsctl --bare --columns=ofport find interface name="$VXLAN_IF" | head -n1 || true)
   LAN_OFPORT=$(ovs-vsctl --bare --columns=ofport find interface name="$ROUTER_LAN_IF" | head -n1 || true)
   echo "→ $VXLAN_IF is ofport ${VXLAN_OFPORT:-?}"
   echo "→ $ROUTER_LAN_IF is ofport ${LAN_OFPORT:-?}"
 
-  # Dati VIP locali (solo per match del punto 1-2)
+  # Local VIP data (only for match in points 1-2)
   if [[ "$ROUTER" == "router1" ]]; then
     LOCAL_DATA="10.0.1.254"
   else
     LOCAL_DATA="10.0.2.254"
   fi
 
-  # 1) ARP verso il VIP del router => al controller (risponde rest_router)
+  # 1) ARP towards router VIP => to controller (rest_router replies)
   ovs-ofctl -O OpenFlow13 add-flow "$OVS_BR" \
     "priority=550,arp,arp_tpa=$LOCAL_DATA,actions=CONTROLLER:65535"
 
-  # 2) IP verso il VIP del router (es. ping al gateway) => al controller
+  # 2) IP towards router VIP (e.g. ping gateway) => to controller
   ovs-ofctl -O OpenFlow13 add-flow "$OVS_BR" \
     "priority=1037,ip,nw_dst=$LOCAL_DATA,actions=CONTROLLER:65535"
 
-  # 3) ARP generico -> FLOOD (normale L2)
+  # 3) Generic ARP -> FLOOD (normal L2)
   ovs-ofctl -O OpenFlow13 add-flow "$OVS_BR" \
     "priority=150,arp,actions=FLOOD"
 
-    # Table-miss sui router -> CONTROLLER
+    # Table-miss on routers -> CONTROLLER
   ovs-ofctl -O OpenFlow13 add-flow "$OVS_BR" "priority=0,actions=CONTROLLER"
 
 
@@ -171,7 +171,7 @@ insert_openflow_rules() {
 }
 
 
-# aggiungi/aggiorna questa funzione (usa "get" invece di "find")
+# add/update this function (use "get" instead of "find")
 wait_for_ofport() {
   local ifname="$1"
   local ofp
@@ -182,17 +182,17 @@ wait_for_ofport() {
     fi
     sleep 0.25
   done
-  echo "[ERR] ofport non pronto per $ifname" >&2
+  echo "[ERR] ofport not ready for $ifname" >&2
   exit 1
 }
 
-# nuova funzione: aspetta che la porta L2 esista e sia dentro al bridge
+# new function: wait for L2 port to exist and be inside bridge
 wait_for_lan_port_ready() {
-  # 1) link presente nel netns del router
+  # 1) link present in router netns
   until ip link show "$ROUTER_LAN_IF" &>/dev/null; do sleep 0.25; done
-  # 2) porta aggiunta al bridge OVS
+  # 2) port added to OVS bridge
   until ovs-vsctl list-ports "$OVS_BR" | grep -qx "$ROUTER_LAN_IF"; do sleep 0.25; done
-  # 3) ofport valido (>0)
+  # 3) valid ofport (>0)
   wait_for_ofport "$ROUTER_LAN_IF" >/dev/null
 }
 
